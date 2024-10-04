@@ -1,0 +1,620 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for setting up AWS End User Messaging, AWS Lambda function, Amazon DynamoDB Amazon API Gateway and AWS WAF
+
+Parameters:
+  LambdaAPITriggerFunctionName:
+    Type: String
+    Description: Name for the Lambda API Trigger function
+  ApiGatewayName:
+    Type: String
+    Description: Name for the API Gateway
+  ApiResourcePath:
+    Type: String
+    Default: mfa
+    Description: Path for the API resource
+  ApiStage:
+    Type: String
+    Default: dev
+    Description: Stage of api (dev, stage, prod)
+  LambdaAuthorizerFunctionName:
+    Type: String
+    Description: Name for the Lambda Authorizer function
+
+Resources:
+  DynamoDBTableKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: KMS key for encrypting DynamoDB Table
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow Use of the Key"
+            Effect: "Allow"
+            Principal:
+              AWS: !GetAtt LambdaExecutionRole.Arn
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  KMSLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: KMSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kms:Encrypt'
+                  - 'kms:Decrypt'
+                  - 'kms:ReEncrypt*'
+                  - 'kms:GenerateDataKey*'
+                  - 'kms:DescribeKey'
+                Resource: !GetAtt DynamoDBTableKey.Arn
+
+  DynamoDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      AttributeDefinitions:
+         - AttributeName: id
+           AttributeType: S
+         - AttributeName: messagetype
+           AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: messagetype
+          KeyType: RANGE
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref DynamoDBTableKey
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  LambdaKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting Lambda environment variables'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow Lambda to use the key"
+            Effect: "Allow"
+            Principal:
+              AWS: !GetAtt LambdaExecutionRole.Arn
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  SQSKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting SQS messages'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow use of the key"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  LambdaDLQ:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      KmsMasterKeyId: !GetAtt SQSKMSKey.Arn
+
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: "LogCreationAndManagement"
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Sid: "PinpointMessagingManagement"
+                Effect: Allow
+                Action:
+                  - 'mobiletargeting:SendMessages'
+                  - 'mobiletargeting:CreateCampaign'
+                  - 'mobiletargeting:DeleteCampaign'
+                  - 'mobiletargeting:GetCampaignActivities'
+                Resource: "*"
+              - Sid: "DynamoDBTableAccess"
+                Effect: Allow
+                Action: 
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:BatchGetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:UpdateItem'
+                Resource: 
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*'
+              - Sid: "SendVoiceMessagesViaSmsVoice"
+                Effect: Allow
+                Action: 'sms-voice:SendVoiceMessage'
+                Resource: "*"
+              - Sid: "SendTextMessagesViaSmsVoice"
+                Effect: Allow
+                Action: 'sms-voice:SendTextMessage'
+                Resource: "*"
+              - Sid: "KMSKeyManagement"
+                Effect: Allow
+                Action:
+                  - "kms:Encrypt"
+                  - "kms:Decrypt"
+                  - "kms:ReEncrypt*"
+                  - "kms:GenerateDataKey*"
+                  - "kms:DescribeKey"
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:*'
+              - Sid: "SQSMessageSending"
+                Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                Resource: !GetAtt LambdaDLQ.Arn
+
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Ref LambdaAPITriggerFunctionName
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs16.x
+      Timeout: 30
+      ReservedConcurrentExecutions: 10
+      KmsKeyArn: !GetAtt LambdaKMSKey.Arn
+      MemorySize: 512
+      EphemeralStorage:
+        Size: 1024
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref DynamoDBTable
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Please upload .zip with libphonenumber-js module. Download libphonenumber-js module under the Lambda-API-Trigger folder with command "npm install libphonenumber-js". Zip all files and upload .zip to lambda'),
+            };
+            return response;
+            }
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaDLQ.Arn
+      LoggingConfig:
+        LogFormat: JSON 
+        ApplicationLogLevel: ERROR
+
+  AuthorizerLambdaKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting Lambda authorizer environment variables'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow Lambda to use the key"
+            Effect: "Allow"
+            Principal:
+              AWS: !GetAtt AuthorizerLambdaExecutionRole.Arn
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  AuthorizerFunctionSQSKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting SQS messages'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow use of the key"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  LambdaAuthorizerDLQ:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      KmsMasterKeyId: !GetAtt AuthorizerFunctionSQSKMSKey.Arn
+
+  AuthorizerLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: AuthorizerLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - "kms:Encrypt"
+                  - "kms:Decrypt"
+                  - "kms:ReEncrypt*"
+                  - "kms:GenerateDataKey*"
+                  - "kms:DescribeKey"
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                Resource: !GetAtt LambdaAuthorizerDLQ.Arn
+
+  AuthorizerFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Ref LambdaAuthorizerFunctionName
+      Handler: index.handler
+      Role: !GetAtt AuthorizerLambdaExecutionRole.Arn
+      Runtime: nodejs16.x
+      Timeout: 30
+      KmsKeyArn: !GetAtt AuthorizerLambdaKMSKey.Arn
+      MemorySize: 512
+      EphemeralStorage:
+        Size: 1024
+      Environment:
+        Variables:
+          OKTA_ISSUER_URL: https://${yourOktaDomain}/oauth2/default
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Please upload .zip with @okta/jwt-verifier module. Download @okta/jwt-verifier module under the Lambda-Authorizer folder with command "npm i @okta/jwt-verifier". Zip the node_module folder and index.js file and upload .zip to lambda'),
+            };
+            return response;
+            }
+      DeadLetterConfig:
+        TargetArn: !GetAtt LambdaAuthorizerDLQ.Arn
+      LoggingConfig:
+        LogFormat: JSON 
+        ApplicationLogLevel: ERROR
+      ReservedConcurrentExecutions: 100
+         
+  ApiGatewayRestApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: !Ref ApiGatewayName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  LambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/*/${ApiResourcePath}
+  
+  ApiGatewayAuthorizer:
+    Type: 'AWS::ApiGateway::Authorizer'
+    Properties:
+      Name: LambdaAuthorizer
+      Type: TOKEN
+      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref ApiGatewayRestApi
+
+  ApiGatewayAuthPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthorizerFunction.Arn
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/authorizers/${ApiGatewayAuthorizer}"
+
+  ApiGatewayResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: !Ref ApiResourcePath
+
+  ApiGatewayMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ApiGatewayResource
+      OperationName: !Ref ApiResourcePath
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayMethod
+    Properties:
+      Description: Lambda API Deployment
+      RestApiId: !Ref ApiGatewayRestApi
+
+  LogGroupKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting CloudWatch Logs'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow logs to use the key"
+            Effect: "Allow"
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  ApiGatewayLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${ApiGatewayName}-access-logs'
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt LogGroupKMSKey.Arn
+
+  ApiGatewayAccessLogRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'apigateway.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ApiGatewayLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  ApiGatewayAccount:
+    Type: 'AWS::ApiGateway::Account'
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayAccessLogRole.Arn
+
+  ApiGatewayStage:
+    Type: 'AWS::ApiGateway::Stage'
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployment
+      Description: Lambda API Stage
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: !Ref ApiStage
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '{"requestId":"$context.requestId", "ip":"$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user", "requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod", "resourcePath":"$context.resourcePath", "status":"$context.status", "protocol":"$context.protocol", "responseLength":"$context.responseLength"}'
+      TracingEnabled: true
+      CacheClusterEnabled: true
+      CacheClusterSize: '0.5'  
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          CachingEnabled: true
+          CacheTtlInSeconds: 300
+          CacheDataEncrypted: true
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+  
+  ApiGatewayUsagePlan:
+    Type: 'AWS::ApiGateway::UsagePlan'
+    Properties:
+      Description: 'Usage plan for API'
+      UsagePlanName: 'BasicUsagePlan'
+      ApiStages:
+        - ApiId: !Ref ApiGatewayRestApi
+          Stage: !Ref ApiGatewayStage
+
+  WebACL:
+    Type: 'AWS::WAFv2::WebACL'
+    Properties:
+      DefaultAction:
+        Allow: {}
+      Scope: REGIONAL
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "${ApiGatewayName}-webacl"
+      Name: !Sub "${ApiGatewayName}-webacl"
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 0
+          OverrideAction: 
+            None: {}
+          Statement: 
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesKnownBadInputsRuleSet
+
+  WebACLAssociation:
+    Type: 'AWS::WAFv2::WebACLAssociation'
+    DependsOn: ApiGatewayStage
+    Properties:
+      ResourceArn: !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGatewayRestApi}/stages/${ApiStage}"
+      WebACLArn: !GetAtt WebACL.Arn
+
+  WAFLogGroupKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'KMS key for encrypting WAF CloudWatch Logs'
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "Enable IAM User Permissions"
+            Effect: "Allow"
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: "Allow logs to use the key"
+            Effect: "Allow"
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: "*"
+      EnableKeyRotation: true
+
+  WAFLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub aws-waf-logs-${ApiGatewayName}
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt WAFLogGroupKMSKey.Arn
+
+  WAFLoggingConfiguration:
+    Type: 'AWS::WAFv2::LoggingConfiguration'
+    Properties:
+      ResourceArn: !GetAtt WebACL.Arn
+      LogDestinationConfigs:
+        - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws-waf-logs-${ApiGatewayName}"
+    DependsOn:
+      - WAFLogGroup
+
+Outputs:
+  LambdaFunctionArn:
+    Description: ARN of the created Lambda function
+    Value: !GetAtt LambdaFunction.Arn
+  ApiGatewayInvokeURL:
+    Description: URL to invoke the API Gateway endpoint
+    Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiStage}/${ApiResourcePath}'

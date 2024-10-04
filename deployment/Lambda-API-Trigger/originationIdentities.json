@@ -1,0 +1,8 @@
+{
+  "US": "+1866XXXXXXX",
+  "CA": "arn:aws:sms-voice:us-east-1:700XXXXXXX:phone-number/phone-eeXXXXXXXXXXXXXXXXXXXXX",
+  "DE": "arn:aws:sms-voice:us-east-1:700XXXXXXX:sender-id/DESenderID/DE",
+  "FR": "+33987XXXXXX",
+  "GB": "phone-XXXXXXXXXXXXXXXXXXXXXXX",
+  "JP": "arn:aws:sms-voice:us-east-1:700XXXXXXX:phone-number/phone-jpXXXXXXXXXXXXXXXXXXXXX"
+}

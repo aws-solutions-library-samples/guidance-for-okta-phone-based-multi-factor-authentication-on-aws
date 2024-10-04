@@ -1,0 +1,81 @@
+English Voice Sample
+
+{
+  "id": {
+    "S": "2"
+  },
+  "messagetype": {
+    "S": "voice call"
+  },
+  "language": {
+    "S": "en"
+  },
+  "message": {
+    "S": "<speak> <prosody rate='slow'> Your One-Time Passcode from the AWS End User Messaging service is <emphasis>@otp</emphasis>. <break time='0.5s'/> I repeat, your code is <emphasis>@otp2</emphasis> <break time='0.5s'/><amazon:effect phonation='soft'>Thank you for listening.</amazon:effect> </prosody> </speak>"
+  },
+  "voiceid": {
+    "S": "MATTHEW"
+  }
+}
+
+------------------------
+Spanish Voice Sample
+
+
+{
+  "id": {
+    "S": "3"
+  },
+  "messagetype": {
+    "S": "voice call"
+  },
+  "language": {
+    "S": "es"
+  },
+  "message": {
+    "S": "<speak>Su código de acceso de un solo uso del proyecto AWS es <emphasis> @otp </emphasis> Su codigo es <emphasis> @otp2 </emphasis><amazon:effect phonation='soft'>Gracias</amazon:effect></speak>"
+  },
+  "voiceid": {
+    "S": "MIA"
+  }
+}
+
+------------------------
+
+English SMS Sample
+
+
+{
+  "id": {
+    "S": "1"
+  },
+  "messagetype": {
+    "S": "sms"
+  },
+  "language": {
+    "S": "en"
+  },
+  "message": {
+    "S": "Your One-Time Passcode from the AWS End User Messaging service is @otp"
+  }
+}
+
+--------------------
+
+Spanish SMS Sample
+
+{
+  "id": {
+    "S": "4"
+  },
+  "messagetype": {
+    "S": "sms"
+  },
+  "language": {
+    "S": "es"
+  },
+  "message": {
+    "S": "Su código de acceso de un solo uso del servicio AWS End User Messaging es @otp"
+  }
+}
+
