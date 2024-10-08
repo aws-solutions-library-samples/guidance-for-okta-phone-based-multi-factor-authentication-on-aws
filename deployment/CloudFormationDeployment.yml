@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template for setting up AWS End User Messaging, AWS Lambda function, Amazon DynamoDB Amazon API Gateway and AWS WAF
+Description: CloudFormation template for setting up AWS End User Messaging, AWS Lambda function, Amazon DynamoDB Amazon API Gateway and AWS WAF ( SO9536 )
 
 Parameters:
   LambdaAPITriggerFunctionName:
