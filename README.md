@@ -318,7 +318,7 @@ This section provides a detailed guide on setting up and testing an OAuth 2.0 Te
    - Click **Save** 
    - Scroll to the top and copy the generated **Client ID** value.
 
-3. **Edit Default Scope:**
+3. **Create New Scope:**
    - Go to **Security > API**.
    - On the **Authorization Servers** tab, select the `Default` authorization server, then select **Scopes**.
    - Click **Add Scope**.
