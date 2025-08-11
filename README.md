@@ -318,9 +318,9 @@ This section provides a detailed guide on setting up and testing an OAuth 2.0 Te
    - Click **Save** 
    - Scroll to the top and copy the generated **Client ID** value.
 
-3. **Add a Custom Scope:**
+3. **Edit Default Scope:**
    - Go to **Security > API**.
-   - On the **Authorization Servers** tab, select the name of the authorization server, then select **Scopes**.
+   - On the **Authorization Servers** tab, select the `Default` authorization server, then select **Scopes**.
    - Click **Add Scope**.
    - Enter a **Name** and **Description** for the scope. You will need the name of the scope when configuring your Inline Hook.
    - Select the checkbox **Include in public metadata**.
