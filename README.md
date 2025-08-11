@@ -128,63 +128,65 @@ Inside the `originationIdentities.json` you will find examples, please edit this
 
    Example: `cd /Users/UserName/Desktop/guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-API-Trigger`
 
-5. Run the following terminal command to download the latest libphonenumber-js Module.
+5. Run command: `npm init` to initialize the project.
+
+6. Run the following terminal command to download the latest libphonenumber-js Module.
 
    Run command: `npm install libphonenumber-js` (node must be installed to run)
 
-6. Zip up `node_modules`, `originationIdentities.json`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-API-Trigger` folder. Use the following Zip command on Mac/Linux.
+7. Zip up `node_modules`, `originationIdentities.json`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-API-Trigger` folder. Use the following Zip command on Mac/Linux.
 
    Run command: `zip -r LambdaAPITrigger.zip *`
 
-7. Go back to the Lambda Console
+8. Go back to the Lambda Console
 
-8. Click on the **Code** tab.
+9. Click on the **Code** tab.
 
-9. Click on the **Upload From** drop down and select **LambdaAPITrigger.zip** file.
+10. Click on the **Upload From** drop down and select **LambdaAPITrigger.zip** file.
 
-10. Upload the **LambdaAPITrigger.zip** file created in step 6.
+11. Upload the **LambdaAPITrigger.zip** file created in step 7.
 
-11. Once LambdaAPITrigger.zip is uploaded, verify you see the `node_modules`, `index.js`, `originationIdentities.json`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
+12. Once LambdaAPITrigger.zip is uploaded, verify you see the `node_modules`, `index.js`, `originationIdentities.json`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
 
-12. Click the **Deploy** button if any files were removed. 
+13. Click the **Deploy** button if any files were removed. 
 
 <p align="center">
   <img src="assets/images/LamdaFunctionCode.png" alt="Lambda Function" width="1000"/>
 </p>
 
-**NOTE: Steps 13 - 26 are optional, Provisioned concurrency is useful for reducing cold start latencies for functions as Okta expects a 3 second or less response time.**
+**NOTE: Steps 14 - 27 are optional, Provisioned concurrency is useful for reducing cold start latencies for functions as Okta expects a 3 second or less response time.**
 
-13. After deployment, scroll to the top of the page and click on the `Actions` tab.
+14. After deployment, scroll to the top of the page and click on the `Actions` tab.
 
-14. Click on `Publish new version`.
+15. Click on `Publish new version`.
 
-15. (Optional) Enter a description for this version, then click "Publish".
+16. (Optional) Enter a description for this version, then click "Publish".
 
-16. Once the new version is published, go to the `Configuration` tab
+17. Once the new version is published, go to the `Configuration` tab
 
-17. On the left pane scroll down to the `Provisioned concurrency`.
+18. On the left pane scroll down to the `Provisioned concurrency`.
 
-18. In `Provisioned concurrency` section click on `edit`
+19. In `Provisioned concurrency` section click on `edit`
 
-19. In the box enter desried concurrency or just `1` for testing.
+20. In the box enter desried concurrency or just `1` for testing.
 
-20. Wait for the Provisioned Concurrency to be allocated. This may take a few minutes.
+21. Wait for the Provisioned Concurrency to be allocated. This may take a few minutes.
 
-21. Once allocated, `copy the Fucntion ARN`  as we will need to update the Amazon API Gateway to use the new published version Lambda ARN. 
+22. Once allocated, `copy the Fucntion ARN`  as we will need to update the Amazon API Gateway to use the new published version Lambda ARN. 
 
 <p align="center">
   <img src="assets/images/LambdaVersion.png" alt="Lambda Version width="1000"/>
 </p>
 
-22. **Open the Amazon API Gateway console** at [Amazon API Gateway](https://console.aws.amazon.com/apigateway/)
+23. **Open the Amazon API Gateway console** at [Amazon API Gateway](https://console.aws.amazon.com/apigateway/)
 
-23. In the list, choose the Amazon API Gateway created by CloudFormation.
+24. In the list, choose the Amazon API Gateway created by CloudFormation.
 
-24. On the left pane click on `Resources`. Then click on the green `POST` downpdown.
+25. On the left pane click on `Resources`. Then click on the green `POST` downpdown.
 
-25. Click on the `Integration request` tab. Then click `edit` 
+26. Click on the `Integration request` tab. Then click `edit` 
 
-26. The required fields will be pre-filled. You need to `delete` the current Lambda Function ARN in the `Lambda Function ARN` field and `paste the Lambda Function Version ARN that you copied in step 21`. Click `Save`
+27. The required fields will be pre-filled. You need to `delete` the current Lambda Function ARN in the `Lambda Function ARN` field and `paste the Lambda Function Version ARN that you copied in step 21`. Click `Save`
 
 Remember: Enabling Provisioned Concurrency will incur additional costs as you're reserving compute capacity regardless of whether it's being used. Adjust the number of provisioned concurrent executions based on your expected load and performance requirements. As new versions are published you will need to update Amazon API Gateway to use the newest version.
 
@@ -204,25 +206,27 @@ The AWS Lambda Authorizer Trigger Function is designed to secure the Amazon API 
 
    Example: `cd /Users/UserName/Desktop/guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-Authorizer`
 
-5. Run the following terminal command to download the latest Okta JWT Verifier Module.
+5. Run command: `npm init` to initialize the project.
+
+6. Run the following terminal command to download the latest Okta JWT Verifier Module.
 
    Run command: `npm i @okta/jwt-verifier` (node must be installed to run)
 
-6. Zip up `node_modules`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-Authorizer` folder. Use the following Zip command on Mac/Linux.
+7. Zip up `node_modules`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-Authorizer` folder. Use the following Zip command on Mac/Linux.
 
    Run command: `zip -r Verifer.zip *`
 
-7. Go back to the Lambda Console
+8. Go back to the Lambda Console
 
-8. Click on the **Code** tab.
+9. Click on the **Code** tab.
 
-9. Click on the **Upload From** drop down and select **Verifer.zip** file.
+10. Click on the **Upload From** drop down and select **Verifer.zip** file.
 
-10. Upload the **Verifer.zip** file created in step 6.
+11. Upload the **Verifer.zip** file created in step 7.
 
-11. Once Verifer.zip is uploaded, verify you see the `node_modules`, `index.js`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
+12. Once Verifer.zip is uploaded, verify you see the `node_modules`, `index.js`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
 
-12. Click the **Deploy** button if any files were removed. 
+13. Click the **Deploy** button if any files were removed. 
 
 <p align="center">
   <img src="assets/images/AuthFunctionCode.png" alt="Auth Lambda Function" width="1000"/>
@@ -338,6 +342,14 @@ This section provides a detailed guide on setting up and testing an OAuth 2.0 Te
 <p align="center">
   <img src="assets/images/Inlinehook.png" alt="Okta Inline Hook:" width="800"/>
 </p>
+
+5. **Add New Access Policy**
+   - In the Admin Console, go to **Security > API**.
+   - Click the name of your authorization server (e.g., default).
+   - Click **Access Policies** tab and click **Add New Access Policy**.
+   - Enter a name, description, assign to the app created in step 4 and click **Create Policy**.
+   - Click **Add rule**.
+   - Enter a name for **Rule Name** and click **Create rule**.
 
 ## Deployment Validation
 
