@@ -47,30 +47,6 @@ Resources:
             Resource: "*"
       EnableKeyRotation: true
 
-  KMSLambdaExecutionRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: KMSPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'kms:Encrypt'
-                  - 'kms:Decrypt'
-                  - 'kms:ReEncrypt*'
-                  - 'kms:GenerateDataKey*'
-                  - 'kms:DescribeKey'
-                Resource: !GetAtt DynamoDBTableKey.Arn
-
   DynamoDBTable:
     Type: 'AWS::DynamoDB::Table'
     Properties:
@@ -162,61 +138,63 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: LambdaPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Sid: "LogCreationAndManagement"
-                Effect: Allow
-                Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                  - 'logs:DescribeLogStreams'
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
-              - Sid: "PinpointMessagingManagement"
-                Effect: Allow
-                Action:
-                  - 'mobiletargeting:SendMessages'
-                  - 'mobiletargeting:CreateCampaign'
-                  - 'mobiletargeting:DeleteCampaign'
-                  - 'mobiletargeting:GetCampaignActivities'
-                Resource: "*"
-              - Sid: "DynamoDBTableAccess"
-                Effect: Allow
-                Action: 
-                  - 'dynamodb:PutItem'
-                  - 'dynamodb:DeleteItem'
-                  - 'dynamodb:GetItem'
-                  - 'dynamodb:BatchGetItem'
-                  - 'dynamodb:Query'
-                  - 'dynamodb:Scan'
-                  - 'dynamodb:UpdateItem'
-                Resource: 
-                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*'
-              - Sid: "SendVoiceMessagesViaSmsVoice"
-                Effect: Allow
-                Action: 'sms-voice:SendVoiceMessage'
-                Resource: "*"
-              - Sid: "SendTextMessagesViaSmsVoice"
-                Effect: Allow
-                Action: 'sms-voice:SendTextMessage'
-                Resource: "*"
-              - Sid: "KMSKeyManagement"
-                Effect: Allow
-                Action:
-                  - "kms:Encrypt"
-                  - "kms:Decrypt"
-                  - "kms:ReEncrypt*"
-                  - "kms:GenerateDataKey*"
-                  - "kms:DescribeKey"
-                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:*'
-              - Sid: "SQSMessageSending"
-                Effect: Allow
-                Action:
-                  - 'sqs:SendMessage'
-                Resource: !GetAtt LambdaDLQ.Arn
+
+  # Permissions are attached as a separate AWS::IAM::Policy rather than as an
+  # inline policy on the role. DynamoDBTableKey and LambdaKMSKey both name
+  # LambdaExecutionRole as a principal in their key policies, so referencing the
+  # table ARN directly from the role would create a circular dependency
+  # (role -> table -> key -> role).
+  LambdaExecutionPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: LambdaPolicy
+      Roles:
+        - !Ref LambdaExecutionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: "LogCreationAndManagement"
+            Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'logs:DescribeLogStreams'
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+          - Sid: "DynamoDBTableAccess"
+            Effect: Allow
+            Action:
+              - 'dynamodb:PutItem'
+              - 'dynamodb:DeleteItem'
+              - 'dynamodb:GetItem'
+              - 'dynamodb:BatchGetItem'
+              - 'dynamodb:Query'
+              - 'dynamodb:Scan'
+              - 'dynamodb:UpdateItem'
+            Resource:
+              - !GetAtt DynamoDBTable.Arn
+          - Sid: "SendVoiceMessagesViaSmsVoice"
+            Effect: Allow
+            Action: 'sms-voice:SendVoiceMessage'
+            Resource: "*"
+          - Sid: "SendTextMessagesViaSmsVoice"
+            Effect: Allow
+            Action: 'sms-voice:SendTextMessage'
+            Resource: "*"
+          - Sid: "KMSKeyManagement"
+            Effect: Allow
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:*'
+          - Sid: "SQSMessageSending"
+            Effect: Allow
+            Action:
+              - 'sqs:SendMessage'
+            Resource: !GetAtt LambdaDLQ.Arn
 
   LambdaFunction:
     Type: 'AWS::Lambda::Function'
@@ -224,13 +202,11 @@ Resources:
       FunctionName: !Ref LambdaAPITriggerFunctionName
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: nodejs16.x
+      Runtime: nodejs24.x
       Timeout: 30
       ReservedConcurrentExecutions: 10
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
       MemorySize: 512
-      EphemeralStorage:
-        Size: 1024
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref DynamoDBTable
@@ -347,12 +323,10 @@ Resources:
       FunctionName: !Ref LambdaAuthorizerFunctionName
       Handler: index.handler
       Role: !GetAtt AuthorizerLambdaExecutionRole.Arn
-      Runtime: nodejs16.x
+      Runtime: nodejs24.x
       Timeout: 30
       KmsKeyArn: !GetAtt AuthorizerLambdaKMSKey.Arn
       MemorySize: 512
-      EphemeralStorage:
-        Size: 1024
       Environment:
         Variables:
           OKTA_ISSUER_URL: https://${yourOktaDomain}/oauth2/default
@@ -505,25 +479,11 @@ Resources:
         DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
         Format: '{"requestId":"$context.requestId", "ip":"$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user", "requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod", "resourcePath":"$context.resourcePath", "status":"$context.status", "protocol":"$context.protocol", "responseLength":"$context.responseLength"}'
       TracingEnabled: true
-      CacheClusterEnabled: true
-      CacheClusterSize: '0.5'  
       MethodSettings:
         - ResourcePath: '/*'
           HttpMethod: '*'
-          CachingEnabled: true
-          CacheTtlInSeconds: 300
-          CacheDataEncrypted: true
           ThrottlingBurstLimit: 100
           ThrottlingRateLimit: 50
-  
-  ApiGatewayUsagePlan:
-    Type: 'AWS::ApiGateway::UsagePlan'
-    Properties:
-      Description: 'Usage plan for API'
-      UsagePlanName: 'BasicUsagePlan'
-      ApiStages:
-        - ApiId: !Ref ApiGatewayRestApi
-          Stage: !Ref ApiGatewayStage
 
   WebACL:
     Type: 'AWS::WAFv2::WebACL'

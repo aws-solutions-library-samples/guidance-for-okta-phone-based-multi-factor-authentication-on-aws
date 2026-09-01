@@ -27,21 +27,37 @@ This Guidance demonstrates how to implement a secure and scalable one-time passc
 </p>
 
 ### Cost
-The following table provides a sample cost breakdown for deploying this Guidance with the default parameters in the US East (N. Virginia) Region for one month.
+The following table provides a sample cost breakdown for deploying this Guidance with the default parameters in the US East (N. Virginia) Region for one month, assuming 1,000 OTP messages. Figures assume standard on-demand rates with **no AWS Free Tier credits applied**, and use 730 hours per month for resources billed hourly.
 
 | AWS Service | Dimensions | Cost (USD) |
 | --- | --- | --- |
-| AWS Lambda | Usage: 1,000 messages<br>Breakdown: Approximately $0 | $0 |
-| AWS Lambda Authorizer | Usage: 1,000 messages<br>Breakdown: Approximately $0 | $0 |
-| Amazon API Gateway | Usage: 1,000 messages, Cache 0.5 <br>Breakdown: Approximately $15 | $15 |
-| Amazon DynamoDB | Usage: 1,000 messages<br>Breakdown: Approximately $12 | $12 |
-| AWS End User Messaging | Usage: 1,000 messages<br>Breakdown: Approximately $0 | $0 |
-| AWS WAF |  Usage: 1 ACL, 5 Rules Approximately $10 | $10 |
-| Total per month | - | $37 |
+| AWS Lambda (API Trigger) | Usage: 1,000 invocations at 512 MB | $0.01 |
+| AWS Lambda (Authorizer) | Usage: 1,000 invocations at 512 MB | $0.01 |
+| Amazon API Gateway (requests) | Usage: 1,000 REST API requests at $3.50 per million | $0.01 |
+| Amazon DynamoDB | 5 RCU + 5 WCU provisioned: (5 x $0.00013 + 5 x $0.00065) x 730 hours | $2.85 |
+| AWS Key Management Service | 7 customer managed keys at $1.00 per key per month | $7.00 |
+| AWS WAF | 1 web ACL ($5.00) + 2 managed rule groups (2 x $1.00) | $7.00 |
+| Amazon SQS + Amazon CloudWatch Logs | 2 dead-letter queues, API Gateway and WAF log ingestion | $0.10 |
+| AWS End User Messaging | Dedicated phone number lease + per-message (SMS) or per-minute (voice) charges | Varies (see note below) |
+| **Total per month (excluding AWS End User Messaging)** | - | **$16.98** |
+
+**AWS End User Messaging cost:** This cost cannot be stated as a single figure because it depends on the originator type you provision and the destination countries you send to. Budget for two components:
+
+- **Phone number lease (recurring monthly).** A long code is always required to send a voice message. Monthly lease fees vary by country (for example, United Kingdom $2, Sweden and Denmark $10, Australia $22, Hungary $60). United States long code pricing is provided through an AWS Support case. A US 10DLC number is $1 per month plus campaign and registration fees, a US toll-free number is $2 per month, and a US dedicated short code is $995 per month with a $650 one-time setup fee.
+- **Per-message charges.** SMS is billed per message plus a carrier fee that varies by destination and originator type. Voice is billed per minute at rates that vary by destination country.
+
+See [AWS End User Messaging pricing](https://aws.amazon.com/end-user-messaging/pricing/) for current rates in your target countries.
+
+**Additional cost considerations:**
+
+- **Provisioned concurrency (optional).** The optional provisioned concurrency steps in the Lambda deployment section below reserve compute capacity around the clock. At 512 MB this adds approximately $5 per month for each provisioned concurrency unit, and is not included in the table above.
+- **Amazon API Gateway cache.** This Guidance does not enable an API Gateway cache cluster. Caching is billed hourly by cache size, is not eligible for the AWS Free Tier, and is not appropriate for this workload, because every request carries a distinct one-time passcode and must reach the Lambda function.
+
+Use the [AWS Pricing Calculator](https://calculator.aws/) to produce an estimate for your own Region, message volume, and phone number configuration.
 
 ## Prerequisites
 
-1. Install Node.js 14.15.0 or later
+1. Install Node.js 20.0.0 or later (required by the AWS SDK for JavaScript v3; the Lambda functions are deployed on the `nodejs24.x` runtime)
 2. Install Zip on terminal
 3. Production AWS End User Messaging account
 4. Dedicated phone number in AWS End User Messaging (short-code, long-code etc.)
@@ -128,11 +144,11 @@ Inside the `originationIdentities.json` you will find examples, please edit this
 
    Example: `cd /Users/UserName/Desktop/guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-API-Trigger`
 
-5. Run command: `npm init` to initialize the project.
+5. Run command: `npm init -y` to initialize the project.
 
-6. Run the following terminal command to download the latest libphonenumber-js Module.
+6. Run the following terminal command to download the libphonenumber-js module and the AWS SDK for JavaScript v3 clients used by the function.
 
-   Run command: `npm install libphonenumber-js` (node must be installed to run)
+   Run command: `npm install libphonenumber-js @aws-sdk/client-pinpoint-sms-voice-v2 @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb` (node must be installed to run)
 
 7. Zip up `node_modules`, `originationIdentities.json`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-API-Trigger` folder. Use the following Zip command on Mac/Linux.
 
@@ -168,25 +184,25 @@ Inside the `originationIdentities.json` you will find examples, please edit this
 
 19. In `Provisioned concurrency` section click on `edit`
 
-20. In the box enter desried concurrency or just `1` for testing.
+20. In the box enter desired concurrency or just `1` for testing.
 
 21. Wait for the Provisioned Concurrency to be allocated. This may take a few minutes.
 
-22. Once allocated, `copy the Fucntion ARN`  as we will need to update the Amazon API Gateway to use the new published version Lambda ARN. 
+22. Once allocated, `copy the Function ARN` as we will need to update the Amazon API Gateway to use the new published version Lambda ARN. 
 
 <p align="center">
-  <img src="assets/images/LambdaVersion.png" alt="Lambda Version width="1000"/>
+  <img src="assets/images/LambdaVersion.png" alt="Lambda Version" width="1000"/>
 </p>
 
 23. **Open the Amazon API Gateway console** at [Amazon API Gateway](https://console.aws.amazon.com/apigateway/)
 
 24. In the list, choose the Amazon API Gateway created by CloudFormation.
 
-25. On the left pane click on `Resources`. Then click on the green `POST` downpdown.
+25. On the left pane click on `Resources`. Then click on the green `POST` dropdown.
 
 26. Click on the `Integration request` tab. Then click `edit` 
 
-27. The required fields will be pre-filled. You need to `delete` the current Lambda Function ARN in the `Lambda Function ARN` field and `paste the Lambda Function Version ARN that you copied in step 21`. Click `Save`
+27. The required fields will be pre-filled. You need to `delete` the current Lambda Function ARN in the `Lambda Function ARN` field and `paste the Lambda Function Version ARN that you copied in step 22`. Click `Save`
 
 Remember: Enabling Provisioned Concurrency will incur additional costs as you're reserving compute capacity regardless of whether it's being used. Adjust the number of provisioned concurrent executions based on your expected load and performance requirements. As new versions are published you will need to update Amazon API Gateway to use the newest version.
 
@@ -206,7 +222,7 @@ The AWS Lambda Authorizer Trigger Function is designed to secure the Amazon API 
 
    Example: `cd /Users/UserName/Desktop/guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-Authorizer`
 
-5. Run command: `npm init` to initialize the project.
+5. Run command: `npm init -y` to initialize the project.
 
 6. Run the following terminal command to download the latest Okta JWT Verifier Module.
 
@@ -214,17 +230,17 @@ The AWS Lambda Authorizer Trigger Function is designed to secure the Amazon API 
 
 7. Zip up `node_modules`, `index.js`, `package.json` and `package-lock.json` together located in `guidance-for-okta-phone-based-multi-factor-authentication-on-aws/deployment/Lambda-Authorizer` folder. Use the following Zip command on Mac/Linux.
 
-   Run command: `zip -r Verifer.zip *`
+   Run command: `zip -r Verifier.zip *`
 
 8. Go back to the Lambda Console
 
 9. Click on the **Code** tab.
 
-10. Click on the **Upload From** drop down and select **Verifer.zip** file.
+10. Click on the **Upload From** drop down and select **Verifier.zip** file.
 
-11. Upload the **Verifer.zip** file created in step 7.
+11. Upload the **Verifier.zip** file created in step 7.
 
-12. Once Verifer.zip is uploaded, verify you see the `node_modules`, `index.js`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
+12. Once Verifier.zip is uploaded, verify you see the `node_modules`, `index.js`, `package.json` and `package-lock.json` file inside the lambda directory. Remove any other files.
 
 13. Click the **Deploy** button if any files were removed. 
 
@@ -232,17 +248,24 @@ The AWS Lambda Authorizer Trigger Function is designed to secure the Amazon API 
   <img src="assets/images/AuthFunctionCode.png" alt="Auth Lambda Function" width="1000"/>
 </p>
 
-12. Click on the **Configuration** tab
+14. Click on the **Configuration** tab
 
-13. On the left pane click on **Environment variables** and click the **edit** button.
+15. On the left pane click on **Environment variables** and click the **edit** button.
 
-14. There will be a key variable named `OKTA_ISSUER_URL`. You will edit the **Value** for that key and replace the `$(yourOktaDomain)` with your actual Okta Domain name. The value should look like this `EX: https://mycompanyname.okta.com/oauth2/default`. A common mistake in this step is to remove `/oauth2/default`, please make sure you do not accidentally delete the ending value as the guidance will fail. Make sure your value looks like the example provided with your okta domain. 
+16. There will be a key variable named `OKTA_ISSUER_URL` with the value `https://${yourOktaDomain}/oauth2/default`. You will edit the **Value** for that key and replace `${yourOktaDomain}` with your actual Okta Domain name. The value should look like this `EX: https://mycompanyname.okta.com/oauth2/default`. A common mistake in this step is to remove `/oauth2/default`, please make sure you do not accidentally delete the ending value as the guidance will fail. Make sure your value looks like the example provided with your okta domain. 
 
 <p align="center">
   <img src="assets/images/AuthDomain.png" alt="Auth Domain Config" width="1000"/>
 </p>
 
-15. Click **Save**
+17. Click **Save**
+
+**Note**: This Guidance assumes the **default Okta authorization server**. If you use a custom authorization server, change two values or the authorizer returns `401 Unauthorized`:
+
+- **Issuer** - in the Lambda console, **Configuration > Environment variables** (steps 14 to 17 above), edit `OKTA_ISSUER_URL` and replace `/oauth2/default` with `/oauth2/{authorizationServerId}`
+- **Audience** - in `deployment/Lambda-Authorizer/index.js` line 30, replace `api://default` with your authorization server's audience, then re-zip and re-upload as described in steps 7 to 13
+
+Both values are in the Okta Admin Console under **Security > API > Authorization Servers**.
 
 By completing these steps, you have successfully deployed your Lambda Authorizer Function via the AWS Lambda Console.
 
