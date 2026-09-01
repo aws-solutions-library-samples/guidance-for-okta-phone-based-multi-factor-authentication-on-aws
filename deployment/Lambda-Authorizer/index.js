@@ -6,39 +6,36 @@ const oktaJwtVerifier = new OktaJwtVerifier({
   issuer: issuerUrl
 });
 
-exports.handler = async (event, context, callback) => {
+// Node.js 24 and later runtimes no longer support callback-based handlers, so
+// this handler returns the policy document and throws "Unauthorized" to deny.
+exports.handler = async (event) => {
   const token = event.authorizationToken;
   if (!token) {
-    callback("Unauthorized");
-    return;
+    throw new Error("Unauthorized");
   }
 
   const match = token.match(/Bearer (.+)/);
   if (!match) {
-    callback("Unauthorized");
-    return;
+    throw new Error("Unauthorized");
   }
 
+  const accessToken = match[1];
+  if (!accessToken) {
+    console.log("No access token");
+    throw new Error("Unauthorized");
+  }
+
+  let jwt;
   try {
-    const accessToken = match[1];
-    console.log(accessToken);
-    if (!accessToken) {
-      console.log("No access token");
-      callback("Unauthorized");
-      return;
-    }
-
-    const jwt = await oktaJwtVerifier.verifyAccessToken(accessToken, 'api://default');
-    console.log('Token is valid');
-
-    const principalId = jwt.claims.sub;
-    const policyDocument = generatePolicy(principalId, 'Allow', event.methodArn);
-
-    callback(null, policyDocument);
+    jwt = await oktaJwtVerifier.verifyAccessToken(accessToken, 'api://default');
   } catch (err) {
     console.warn('Token failed validation:', err.message);
-    callback("Unauthorized");
+    throw new Error("Unauthorized");
   }
+
+  console.log('Token is valid');
+
+  return generatePolicy(jwt.claims.sub, 'Allow', event.methodArn);
 };
 
 const generatePolicy = (principalId, effect, resource) => {

@@ -1,4 +1,10 @@
-const AWS = require('aws-sdk');
+const {
+  PinpointSMSVoiceV2Client,
+  SendTextMessageCommand,
+  SendVoiceMessageCommand,
+} = require('@aws-sdk/client-pinpoint-sms-voice-v2');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
 const parsePhoneNumber = require('libphonenumber-js');
 
@@ -13,10 +19,15 @@ var messageType = "TRANSACTIONAL";
 const originationIdentities = require('./originationIdentities.json');
 
 
-AWS.config.update({ region: aws_region });
+// Clients are created once per execution environment so that connections are
+// reused across warm invocations.
+const smsVoiceClient = new PinpointSMSVoiceV2Client({ region: aws_region });
+
+const docClient = DynamoDBDocumentClient.from(
+  new DynamoDBClient({ region: aws_region })
+);
 
 exports.handler = async (event) => {
-  console.log(event.body);
   const data = (JSON.parse(event.body)).data;
 
   destinationNumber = data.messageProfile["phoneNumber"];
@@ -70,8 +81,6 @@ exports.handler = async (event) => {
 };
 
 async function sendSms(message) {
-  const pinpointSMSVoiceV2 = new AWS.PinpointSMSVoiceV2();
-  
   const countryCode = getCountryCode(destinationNumber);
 
   const originationIdentity = originationIdentities[countryCode];
@@ -82,21 +91,11 @@ async function sendSms(message) {
     MessageType: messageType,
     OriginationIdentity: originationIdentity,
   };
-  
-  return new Promise((resolve, reject) => {
-    pinpointSMSVoiceV2.sendTextMessage(params, function (err, data) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
+
+  return smsVoiceClient.send(new SendTextMessageCommand(params));
 }
 
 async function makeCall(messageObj) {
-  var pinpointsmsvoice = new AWS.PinpointSMSVoiceV2();
-  
   const countryCode = getCountryCode(destinationNumber);
 
   const originationIdentity = originationIdentities[countryCode];
@@ -109,15 +108,7 @@ async function makeCall(messageObj) {
     OriginationIdentity: originationIdentity,
   };
 
-  return new Promise((resolve, reject) => {
-    pinpointsmsvoice.sendVoiceMessage(params, function (err, data) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
+  return smsVoiceClient.send(new SendVoiceMessageCommand(params));
 }
 
 function getCountryCode(phoneNumber) {
@@ -170,8 +161,6 @@ function getErrorResponse(method, error) {
 
 
 async function getMessageFromDynamo(language, deliveryChannel) {
-  const docClient = new AWS.DynamoDB.DocumentClient();
-
   const params = {
     TableName: process.env.DYNAMODB_TABLE_NAME,
     FilterExpression: "#language = :language AND #messagetype = :messagetype",
@@ -186,7 +175,7 @@ async function getMessageFromDynamo(language, deliveryChannel) {
   };
 
   try {
-    const response = await docClient.scan(params).promise();
+    const response = await docClient.send(new ScanCommand(params));
     return response.Items[0];
   } catch (error) {
     console.error(error);

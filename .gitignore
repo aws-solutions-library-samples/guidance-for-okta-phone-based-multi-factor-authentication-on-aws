@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node dependencies and build artifacts produced while following the README.
+# The deployment folders are populated locally by `npm init` / `npm install`
+# and zipped for upload to Lambda, so those artifacts are not tracked.
+node_modules/
+*.zip
+deployment/Lambda-API-Trigger/package.json
+deployment/Lambda-API-Trigger/package-lock.json
+deployment/Lambda-Authorizer/package.json
+deployment/Lambda-Authorizer/package-lock.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor and environment
+.vscode/
+.idea/
+.env
+.env.local
